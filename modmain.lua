@@ -9,6 +9,7 @@ local Widget = require "widgets/widget"
 local TEMPLATES = require "widgets/redux/templates"
 
 local mod_preset_file = "mod_presets"
+local USE_FIRST_PRESET = "USE_FIRST_PRESET"
 
 --TODO: for builtin presets, we have to save the preset to the file first before anything else.
 --First check if the file is empty. If so, just write. If not, then don't tamper with it.
@@ -117,10 +118,10 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
     }
 	
 	presetbox.OnPresetButton = function(self)
-		--self.currentPreset = presetsList[1].id --this is a test. remove this or set it to nil unless you know from startup what preset they had last chosen.
+		--self.currentpreset = presetsList[1].id --this is a test. remove this or set it to nil unless you know from startup what preset they had last chosen.
 		if self.parent_widget:GetParentScreen() then self.parent_widget:GetParentScreen().last_focus = GLOBAL.TheFrontEnd:GetFocusWidget() end
 		local presetpopupscreen = PresetPopupScreen(
-			self.currentPreset, --is this the preset ID or the whole preset table? -- RICKY: I think the ID
+			self.currentpreset or USE_FIRST_PRESET, --TERRIBLE. This USE_FIRST_PRESET string is used instead of nil in order to bypass a nil check in presetpopupscreen's constructor
 			function(levelcategory, presetid)
 				-- When users confirm which preset to load from PresetPopupScreen
 				self:OnPresetChosen(presetid)
@@ -130,7 +131,7 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 				oneditpresetdetails(originalid, name, desc)
 				
 				-- If user changed details for current preset, update text on presetbox
-				if originalid == self.currentPreset then
+				if originalid == self.currentpreset then
 					self:SetTextAndDesc(name, desc)
 				end
 				return true
@@ -225,7 +226,6 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 				return
 			end
 
-			-- HOW HANDLE "selectedpreset"??
 			if presetpopupscreen.selectedpreset == data.id then
 				preset.backing:Select()
 				preset.name:SetColour(GLOBAL.UICOLOURS.GOLD_SELECTED)
@@ -234,8 +234,6 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 				preset.name:SetColour(GLOBAL.UICOLOURS.GOLD_CLICKABLE)
 			end
 
-			print("Reapply data to widget: ")
-			print(data.description)
 			preset.name:SetString(data.name)
 			preset.desc:SetMultilineTruncatedString(data.description, 3, padded_width - 40, nil, "...")
 			if preset.data ~= data then
@@ -258,7 +256,6 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 				preset.edit:Show()
 				preset.delete:Show()
 			end
-			print("Apply data to widget")
 		end
 		
 		presetpopupscreen.scroll_list:Kill()
@@ -294,6 +291,11 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 			self:Refresh()
 		end
 		
+		-- Select first preset if currentpreset is nil
+		if presetpopupscreen.selectedpreset == USE_FIRST_PRESET then
+			presetpopupscreen:OnPresetButton(presetsList[1].id)
+		end
+		
 		presetpopupscreen.EditPreset = function(self, presetid)
 			GLOBAL.TheFrontEnd:PushScreen(
 				NamePresetScreen(
@@ -320,7 +322,6 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 								presetsList[i] = presets[presetid]
 							end
 						end
-						print("Refresh scrolling list")
 						self:Refresh()
 					end,
 					presetid,
@@ -332,38 +333,81 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 		
 		presetpopupscreen.DeletePreset = function(self, presetid)
 			--TODO: Confirmation screen and call the ondeletefn inside!!
-			self.ondeletefn(self.levelcategory, presetid)
-			for k, v in pairs(presetsList) do
-				if v.id == presetid then
-					table.remove(presetsList, k)
-					break
-				end
-			end
-			--TODO: Sort again here!
-			self:Refresh()
+			GLOBAL.TheFrontEnd:PushScreen(
+				PopupDialogScreen(string.format(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.DELETEPRESET_TITLE, presets[presetid].name), GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.DELETEPRESET_BODY,
+				{
+					{
+						text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.CANCEL,
+						cb = function()
+							GLOBAL.TheFrontEnd:PopScreen()
+						end,
+					},
+					{
+						text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.DELETE,
+						cb = function()
+							self.ondeletefn(self.levelcategory, presetid)
+							for k, v in pairs(presetsList) do
+								if v.id == presetid then
+									table.remove(presetsList, k)
+									break
+								end
+							end
+							--TODO: Sort again here!
+							
+							-- Select first preset if selected preset was just deleted
+							if presetid == self.selectedpreset then
+								self:OnPresetButton(presetsList[1].id)
+							else
+								self:Refresh()
+							end
+							GLOBAL.TheFrontEnd:PopScreen()
+						end,
+					},
+				})
+			)
 		end
 		
 		GLOBAL.TheFrontEnd:PushScreen(presetpopupscreen)
 	end
 	
 	presetbox.OnPresetChosen = function(self, presetid)
-		-- TODO: If any tweaks, push popup informing that changes will be lost
-	
-		-- First disable all mods
-		for k, modname in pairs(GLOBAL.ModManager:GetEnabledServerModNames()) do
-			scs.mods_tab:OnConfirmEnable(false, modname)
+		local onpresetchosen = function()
+			-- Disable all mods
+			for k, modname in pairs(GLOBAL.ModManager:GetEnabledServerModNames()) do
+				scs.mods_tab:OnConfirmEnable(false, modname)
+			end
+			
+			-- Load the selected preset
+			for modname, configs in pairs(presets[presetid].mods) do --First enable the mods and then set the configuration options
+				scs.mods_tab:OnConfirmEnable(false, modname)
+				GLOBAL.KnownModIndex:SaveConfigurationOptions(function() end, modname, configs, false)
+			end
+			
+			self.currentpreset = presetid
+			
+			--TODO: put if statement here if we create builtin presets. If preset.builtin == true??
+			self:SetPresetEditable(true)
+			self:SetTextAndDesc(presets[presetid].name, presets[presetid].description)
 		end
 		
-		-- Load the selected preset
-		for modname, configs in pairs(presets[presetid].mods) do --First enable the mods and then set the configuration options
-			scs.mods_tab:OnConfirmEnable(false, modname)
-			GLOBAL.KnownModIndex:SaveConfigurationOptions(function() end, modname, configs, false)
-		end
-		
-		self.currentPreset = presetid
-		--TODO: put if statement here if we create builtin presets. If preset.builtin == true??
-		self:SetPresetEditable(true)
-		self:SetTextAndDesc(presets[presetid].name, presets[presetid].description)
+		-- Confirmation popup, inform changes will be lost (TODO: only display if any mods changed)
+		GLOBAL.TheFrontEnd:PushScreen(PopupDialogScreen(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.LOSECHANGESTITLE, GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.LOSECHANGESBODY,
+            {
+                {
+                    text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.YES,
+                    cb = function()
+                        GLOBAL.TheFrontEnd:PopScreen()
+                        onpresetchosen()
+                    end
+                },
+                {
+                    text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.NO,
+                    cb = function()
+                        GLOBAL.TheFrontEnd:PopScreen()
+                    end
+                }
+            })
+        )
 	end
 	
 	presetbox.OnEditPreset = function(self)
@@ -373,7 +417,7 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 				GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.EDITPRESET,
 				GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.SAVEPRESETCHANGES,
 				function(id, name, description)
-					if self:EditPreset(self.currentPreset, id, name, description, true) then return end
+					if self:EditPreset(self.currentpreset, id, name, description, true) then return end
 					GLOBAL.TheFrontEnd:PushScreen(
 						PopupDialogScreen(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.SAVECHANGESFAILED_TITLE, GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.SAVECHANGESFAILED_BODY,
 						{
@@ -386,9 +430,9 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 						})
 					)
 				end,
-				self.currentPreset,
-				presets[self.currentPreset].name,
-				presets[self.currentPreset].description
+				self.currentpreset,
+				presets[self.currentpreset].name,
+				presets[self.currentpreset].description
 			)
 		)
 	end
@@ -396,7 +440,7 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 	presetbox.EditPreset = function(self, originalid, presetid, name, desc, updateoverrides)
 		-- Save the edited preset
 		if onsavepreset(originalid, name, desc) then
-			if originalid == self.currentPreset then
+			if originalid == self.currentpreset then
 				self:SetTextAndDesc(name, desc)
 			end
 			return true
@@ -406,5 +450,12 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 	presetbox.DeletePreset = function(self, presetid)
 		presets[presetid] = nil
 		GLOBAL.SavePersistentString(mod_preset_file, GLOBAL.DataDumper(presets, nil, false), false)
+		
+		-- Clear current preset and update displayed preset details
+		if presetid == self.currentpreset then
+			self.currentpreset = nil
+			self:SetTextAndDesc("", "")
+			self:SetPresetEditable(false)
+		end
 	end
 end)
