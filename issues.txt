@@ -1,5 +1,5 @@
 the presetpopup will never start with a "currentpreset" since the mod will always startup without knowing the last applied preset
 
-add builtin vanilla preset hello there
-
 update presetid when preset name is changed?
+
+only display apply preset confirmation if any mods changed

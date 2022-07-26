@@ -11,10 +11,26 @@ local TEMPLATES = require "widgets/redux/templates"
 local mod_preset_file = "mod_presets"
 local USE_FIRST_PRESET = "USE_FIRST_PRESET"
 
---TODO: for builtin presets, we have to save the preset to the file first before anything else.
+local vanilla = {
+    description="Ole' reliable Constant.",
+    id="VANILLA",
+    mods={},
+    name="Vanilla",
+    version=1 
+}
+
 --First check if the file is empty. If so, just write. If not, then don't tamper with it.
---GLOBAL.TheSim:GetPersistentString(mod_preset_file, function(load_success, data)
---GLOBAL.SavePersistentString(mod_preset_file, GLOBAL.DataDumper(presets, nil, false), false)
+GLOBAL.TheSim:GetPersistentString(mod_preset_file, function(load_success, data)
+	if not load_success or data == nil then
+		local presets = {}
+		presets[vanilla.id] = vanilla
+		GLOBAL.SavePersistentString(mod_preset_file, GLOBAL.DataDumper(presets, nil, false), false)
+	end
+end)
+
+local function IsBuiltinPreset(presetid)
+	return presetid == vanilla.id
+end
 
 AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 	local presetbox = scs.mods_tab:AddChild(PresetBox(scs.world_tabs[1].settings_widget, LEVELCATEGORY.SETTINGS, 430))
@@ -253,8 +269,13 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 					preset.backing:SetImageDisabledColour(GLOBAL.unpack(normal_list_item_bg_tint))
 				end
 				
-				preset.edit:Show()
-				preset.delete:Show()
+				if IsBuiltinPreset(data.id) then
+					preset.edit:Hide()
+					preset.delete:Hide()
+				else
+					preset.edit:Show()
+					preset.delete:Show()
+				end
 			end
 		end
 		
@@ -263,8 +284,15 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 		-- Recreate scrolling list of presets (see presetpopupscreen.lua)
 		local presetsList = {}
 		for k, v in pairs(presets) do
-			table.insert(presetsList, v)
+			if not IsBuiltinPreset(v.id) then
+				table.insert(presetsList, v)
+			end
 		end
+		table.sort(presetsList, function(a, b)
+			return string.lower(a.name) < string.lower(b.name)
+		end)
+		table.insert(presetsList, 1, presets[vanilla.id])
+		
 		--TODO: Sort this array. If we have builtin presets and we want them to show first,
 		--sort here according to maybe a new order property? or just alphabetically (excluding builtin presets)
 		presetpopupscreen.scroll_list = presetpopupscreen.root:AddChild(TEMPLATES.ScrollingGrid(
@@ -332,7 +360,6 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 		end
 		
 		presetpopupscreen.DeletePreset = function(self, presetid)
-			--TODO: Confirmation screen and call the ondeletefn inside!!
 			GLOBAL.TheFrontEnd:PushScreen(
 				PopupDialogScreen(string.format(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.DELETEPRESET_TITLE, presets[presetid].name), GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.DELETEPRESET_BODY,
 				{
@@ -385,12 +412,15 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 			
 			self.currentpreset = presetid
 			
-			--TODO: put if statement here if we create builtin presets. If preset.builtin == true??
-			self:SetPresetEditable(true)
+			if IsBuiltinPreset(presetid) then
+				self:SetPresetEditable(false)
+			else
+				self:SetPresetEditable(true)
+			end
 			self:SetTextAndDesc(presets[presetid].name, presets[presetid].description)
 		end
 		
-		-- Confirmation popup, inform changes will be lost (TODO: only display if any mods changed)
+		-- Confirmation popup, inform changes will be lost
 		GLOBAL.TheFrontEnd:PushScreen(PopupDialogScreen(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.LOSECHANGESTITLE, GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.LOSECHANGESBODY,
             {
                 {
