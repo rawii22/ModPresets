@@ -39,7 +39,7 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 	presetbox.changepresetmode:Hide()
 	presetbox.horizontal_line:Hide()
 	presetbox.presets:SetString("Mod Presets")
-	presetbox.presetdesc:Nudge(GLOBAL.Vector3(0, -40, 0))
+	presetbox.presetdesc:Nudge(GLOBAL.Vector3(0, -40, 0)) -- For some reason the description of the current preset was too high and right under the preset name, so we move it down a little with this.
 	presetbox.presetbutton:SetText("Choose Mod Preset")
 	
 	presetbox:SetPresetEditable(false)
@@ -398,6 +398,11 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 	end
 	
 	presetbox.OnPresetChosen = function(self, presetid)
+		-- TODO: Push info screen asking user to select a preset if none is chosen
+		if presetid == USE_FIRST_PRESET then
+			return
+		end
+	
 		local onpresetchosen = function()
 			-- Disable all mods
 			for k, modname in pairs(GLOBAL.ModManager:GetEnabledServerModNames()) do
@@ -426,7 +431,7 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
                 {
                     text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.YES,
                     cb = function()
-                        GLOBAL.TheFrontEnd:PopScreen()
+                        GLOBAL.TheFrontEnd:PopScreen() --This PopScreen must come first. Otherwise, if a non-workshop mod is enabled by the preset, this confirmation screen will stay on top and prevent users from clicking "Ok" on the non-workshop mod warning.
                         onpresetchosen()
                     end
                 },

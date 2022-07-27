@@ -3,3 +3,17 @@ the presetpopup will never start with a "currentpreset" since the mod will alway
 update presetid when preset name is changed?
 
 only display apply preset confirmation if any mods changed
+
+Importing presets, maybe make a way for people to paste an exported preset into the data
+folder. And if the user selecets an "import" button, then we table.insert it onto their
+existing list of presets in mod_presets if it doesn't already exist. This way, they won't
+have to paste it directly into client_save and lose all their existing presets.
+
+What happens if someone tries to apply a preset that contains a mod they don't have?
+We can download from the workshop for them, maybe subscribe to them too?
+Maybe make a warning screen saying, preset contains mods you don't have. Maybe "enable mods
+you do own anyway?" confirmation screen.
+
+Add another preset box to the client mods tab
+
+Make this compatible with In-Game Mod Manager
