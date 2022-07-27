@@ -4,7 +4,7 @@ description = "Allows you to store and apply mod presets for server mods (for no
 .."The presets not only store mod selections, but they also store your individual configuration choices for each mod.\n\n"
 .."Check out the README in the files (or github) for a full description of the functionality!\n"
 .."https://github.com/rawii22/ModPresets"
-version = "1.0"
+version = "1.1"
 version_compatible = "1.0"
 icon = "modicon.tex"
 icon_atlas = "modicon.xml"
