@@ -1,8 +1,4 @@
-the presetpopup will never start with a "currentpreset" since the mod will always startup without knowing the last applied preset
-
-update presetid when preset name is changed?
-
-only display apply preset confirmation if any mods changed
+Add another preset box to the client mods tab
 
 Importing presets, maybe make a way for people to paste an exported preset into the data
 folder. And if the user selecets an "import" button, then we table.insert it onto their
@@ -14,6 +10,16 @@ We can download from the workshop for them, maybe subscribe to them too?
 Maybe make a warning screen saying, preset contains mods you don't have. Maybe "enable mods
 you do own anyway?" confirmation screen.
 
-Add another preset box to the client mods tab
-
 Make this compatible with In-Game Mod Manager
+
+Only display apply preset confirmation if any mods changed
+
+the presetpopup will never start with a "currentpreset" since the mod will always startup without knowing the last applied preset
+
+update presetid when preset name is changed?
+
+What happens when someone tries to make a preset for client mods with the same name as an
+existing preset for server mods? It will probably overwrite it and turn it into a client
+mod preset.
+
+No nil checks for presetpopupscreen inside ScrollWidgetsCtor and ApplyDataToWidget.
