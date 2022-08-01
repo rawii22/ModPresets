@@ -1,5 +1,3 @@
-Add another preset box to the client mods tab
-
 Importing presets, maybe make a way for people to paste an exported preset into the data
 folder. And if the user selecets an "import" button, then we table.insert it onto their
 existing list of presets in mod_presets if it doesn't already exist. This way, they won't

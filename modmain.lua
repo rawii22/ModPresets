@@ -23,16 +23,16 @@ local vanilla = {
     id="VANILLA",
     mods={},
     name="Vanilla",
-    version=1,
+    version=2,
 	is_client_preset=false,
 }
 
 local disableAll = {
     description="Removes all excitement.",
-    id="DISABLE_ALL",
+    id="CLEAN_SLATE",
     mods={},
-    name="Disable All",
-    version=1,
+    name="Clean Slate",
+    version=2,
 	is_client_preset=true,
 }
 
@@ -65,15 +65,16 @@ GLOBAL.TheSim:GetPersistentString(MOD_PRESETS_FILE, function(load_success, data)
 		presetsTemp[vanilla.id] = vanilla
 		presetsTemp[disableAll.id] = disableAll
 	else
-		-- Add 'is_client_preset' property to presets created before v1.1
+		-- Add 'is_client_preset' property to presets stored using save-data-format version 1
 		success, presetsTemp = GLOBAL.RunInSandbox(data)
 		if success and presetsTemp then
 			for k,preset in pairs(presetsTemp) do
-				if preset.is_client_preset == nil then
+				if preset.version == 1 then
 					preset.is_client_preset = false
+					preset.version = 2
 				end
 			end
-			-- Add 'Disable All' preset for preset files created before v1.1
+			-- Add 'Disable All' preset for preset files created before mod version 1.1
 			if not presetsTemp[disableAll.id] then
 				presetsTemp[disableAll.id] = disableAll
 			end
@@ -83,7 +84,17 @@ GLOBAL.TheSim:GetPersistentString(MOD_PRESETS_FILE, function(load_success, data)
 end)
 
 local function IsBuiltinPreset(presetid)
-	return presetid == vanilla.id or presetid == disableAll
+	return presetid == vanilla.id or presetid == disableAll.id
+end
+
+local function getEnabledClientModNames()
+	local enabledClientMods = {}
+	for k,v in pairs(GLOBAL.KnownModIndex:GetClientModNames()) do
+		if GLOBAL.KnownModIndex:IsModEnabled(v) then
+			table.insert(enabledClientMods, v)
+		end
+	end
+	return enabledClientMods
 end
 
 local function sortByPresetName(a, b)
@@ -137,13 +148,36 @@ local onsavepreset_server = function(id, name, description)
 		id = id,
 		name = name,
 		description = description,
-		version = 1,
+		version = 2,
 		mods = {},
 		is_client_preset = false,
 	}
 	for k, mod in ipairs(enabledServerMods) do
 		local config = GLOBAL.KnownModIndex:LoadModConfigurationOptions(mod, false)
-		preset.mods[mod] = config
+		preset.mods[mod] = GLOBAL.deepcopy(config) -- Deep copy since the config object returned can still be altered elsewhere.
+	end
+	
+	-- Save/Update preset
+	presets[id] = preset
+	
+	GLOBAL.SavePersistentString(MOD_PRESETS_FILE, GLOBAL.DataDumper(presets, nil, false), false)
+	return true
+end
+
+local onsavepreset_client = function(id, name, description)
+	local enabledClientMods = getEnabledClientModNames()
+	local preset = {
+		id = id,
+		name = name,
+		description = description,
+		version = 2,
+		mods = {},
+		is_client_preset = true,
+	}
+	
+	for k, mod in ipairs(enabledClientMods) do
+		local config = GLOBAL.KnownModIndex:LoadModConfigurationOptions(mod, true)
+		preset.mods[mod] = GLOBAL.deepcopy(config)
 	end
 	
 	-- Save/Update preset
@@ -580,6 +614,198 @@ AddClassPostConstruct("screens/redux/servercreationscreen", function(scs)
 	scs.mods_tab.subscreener.OnMenuButtonSelected = function(self, selection)
 		OnMenuButtonSelected_original(self, selection)
 		if selection == "server" then
+			presetbox:Show()
+		else
+			presetbox:Hide()
+		end
+	end
+end)
+
+--====================================
+-- CLIENT MOD PRESETS FOR MODSSCREEN
+--====================================
+
+AddClassPostConstruct("screens/redux/modsscreen", function(ms)
+	--THIS IS TERRIBLE PLEASE DON'T LOOK...
+	--PresetBox calls DoFocusHookups at the end of the ctor and calls a function that doesn't exist on OUR parent widget. We defined it here to bypass it.
+	ms.mods_page.IsNewShard = function(self)
+		return false
+	end
+	
+	local presetbox = ms.mods_page:AddChild(PresetBox(ms.mods_page, LEVELCATEGORY.SETTINGS, 430))
+	presetbox:SetPosition(-640, 120)
+	presetbox:SetScale(0.6)
+	presetbox.changepresetmode:Hide()
+	presetbox.horizontal_line:Hide()
+	presetbox.presets:SetString("Mod Presets")
+	presetbox.presetdesc:Nudge(GLOBAL.Vector3(0, -40, 0)) -- For some reason the description of the current preset was too high and right under the preset name, so we move it down a little with this.
+	presetbox.presetbutton:SetText("Choose Mod Preset")
+	
+	presetbox:SetPresetEditable(false)
+	
+	
+	-- Get list of all other presets
+	loadModPresets()
+	
+	presetbox.OnSavePreset = function(self)
+		GLOBAL.TheFrontEnd:PushScreen(
+			NamePresetScreen(
+				self.levelcategory,
+				GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.NEWPRESET,
+				GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.SAVEPRESET,
+				function(id, name, description)
+					if onsavepreset_client(id, name, description) then return end
+					
+					-- If save fails
+					GLOBAL.TheFrontEnd:PushScreen(
+						PopupDialogScreen(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.SAVECHANGESFAILED_TITLE, GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.SAVECHANGESFAILED_BODY,
+						{
+							{
+								text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.BACK,
+								cb = function()
+									GLOBAL.TheFrontEnd:PopScreen()
+								end,
+							},
+						})
+					)
+				end
+			)
+		)
+	end
+	
+	presetbox.OnPresetButton = function(self)
+		--self.currentpreset = presetsList[1].id --this is a test. remove this or set it to nil unless you know from startup what preset they had last chosen.
+		
+		presetpopupscreen = PresetPopupScreen(
+			self.currentpreset or USE_FIRST_PRESET, --TERRIBLE. This USE_FIRST_PRESET string is used instead of nil in order to bypass a nil check in presetpopupscreen's constructor
+			function(levelcategory, presetid)
+				-- When users confirm which preset to load from PresetPopupScreen
+				self:OnPresetChosen(presetid)
+			end,
+			function(levelcategory, originalid, presetid, name, desc)
+				-- When users confirm they want to edit the name/desc of a preset from PresetPopupScreen
+				oneditpresetdetails(originalid, name, desc)
+				
+				-- If user changed details for current preset, update text on presetbox
+				if originalid == self.currentpreset then
+					self:SetTextAndDesc(name, desc)
+				end
+				return true
+			end,
+			function(levelcategory, presetid)
+				-- When users confirm they want to delete a preset from PresetPopupScreen
+				self:DeletePreset(presetid)
+			end,
+			self.levelcategory,
+			"SURVIVAL",
+			"SURVIVAL"
+		)
+		
+		presetpopupscreen.scroll_list:Kill()
+		
+		-- Get array of presets for scrolling list
+		presetsList = getPresetsArrayByType(true)
+		
+		presetpopupscreen.scroll_list = presetpopupscreen.root:AddChild(TEMPLATES.ScrollingGrid(
+			presetsList,
+			{
+				context = {},
+				widget_width  = padded_width,
+				widget_height = padded_height,
+				num_visible_rows = num_rows,
+				num_columns      = 1,
+				item_ctor_fn = ScrollWidgetsCtor,
+				apply_fn     = ApplyDataToWidget,
+				scrollbar_offset = 10,
+				scrollbar_height_offset = -50,
+				peek_height = peek_height,
+				force_peek = true,
+				end_offset = 1 - peek_height/padded_height,
+			}
+		))
+		presetpopupscreen.scroll_list:SetPosition(0 + (presetpopupscreen.scroll_list:CanScroll() and -10 or 0), -25)
+		
+		presetpopupscreen.OnPresetButton = pps_OnPresetButton
+		
+		-- Select first preset if currentpreset is nil
+		if presetpopupscreen.selectedpreset == USE_FIRST_PRESET then
+			presetpopupscreen:OnPresetButton(presetsList[1].id)
+		end
+		
+		presetpopupscreen.EditPreset = pps_EditPreset
+		
+		presetpopupscreen.DeletePreset = pps_DeletePreset
+		
+		GLOBAL.TheFrontEnd:PushScreen(presetpopupscreen)
+	end
+	
+	presetbox.OnPresetChosen = function(self, presetid)
+		-- TODO: Push info screen asking user to select a preset if none is chosen
+		if presetid == USE_FIRST_PRESET then
+			return
+		end
+	
+		local onpresetchosen = function()
+			-- Disable all mods
+			for k, modname in pairs(getEnabledClientModNames()) do
+				ms.mods_page:OnConfirmEnable(false, modname)
+			end
+			
+			-- Load the selected preset
+			for modname, configs in pairs(presets[presetid].mods) do --First enable the mods and then set the configuration options
+				ms.mods_page:OnConfirmEnable(false, modname)
+				GLOBAL.KnownModIndex:SaveConfigurationOptions(function() end, modname, configs, true)
+			end
+			
+			self.currentpreset = presetid
+			
+			if IsBuiltinPreset(presetid) then
+				self:SetPresetEditable(false)
+			else
+				self:SetPresetEditable(true)
+			end
+			self:SetTextAndDesc(presets[presetid].name, presets[presetid].description)
+		end
+		
+		-- Confirmation popup, inform changes will be lost
+		GLOBAL.TheFrontEnd:PushScreen(PopupDialogScreen(GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.LOSECHANGESTITLE, GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.LOSECHANGESBODY,
+            {
+                {
+                    text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.YES,
+                    cb = function()
+                        GLOBAL.TheFrontEnd:PopScreen() --This PopScreen must come first. Otherwise, if a non-workshop mod is enabled by the preset, this confirmation screen will stay on top and prevent users from clicking "Ok" on the non-workshop mod warning.
+                        onpresetchosen()
+                    end
+                },
+                {
+                    text = GLOBAL.STRINGS.UI.CUSTOMIZATIONSCREEN.NO,
+                    cb = function()
+                        GLOBAL.TheFrontEnd:PopScreen()
+                    end
+                }
+            })
+        )
+	end
+	
+	presetbox.OnEditPreset = pb_OnEditPreset
+	
+	presetbox.EditPreset = function(self, originalid, presetid, name, desc, updateoverrides)
+		-- Save the edited preset
+		if onsavepreset_client(originalid, name, desc) then
+			if originalid == self.currentpreset then
+				self:SetTextAndDesc(name, desc)
+			end
+			return true
+		end
+	end
+	
+	presetbox.DeletePreset = pb_DeletePreset
+	
+	-- Hide the preset box when a menu button other than "client" is selected. This is because the preset box in this ModsTab is only for client mods.
+	local OnMenuButtonSelected_original = ms.mods_page.subscreener.OnMenuButtonSelected
+	ms.mods_page.subscreener.OnMenuButtonSelected = function(self, selection)
+		OnMenuButtonSelected_original(self, selection)
+		if selection == "client" then
 			presetbox:Show()
 		else
 			presetbox:Hide()

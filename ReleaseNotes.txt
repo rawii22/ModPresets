@@ -1,0 +1,13 @@
+v1.2
++ Added the ability to create presets for client mods.
++ Fixed an issue where mod configurations would not be applied after updating an existing preset.
++ Preset box will only appear when viewing the appropriate mods tab.
+	+ When on the mods screen, the preset box will only appear when editing client mods.
+	+ When on a server's mods tab, the preset box will only appear when editing server mods.
+
+v1.1
++ Wrote the README file.
++ Added a nil check.
+
+v1.0
++ Can create presets for server mods.

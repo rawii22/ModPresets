@@ -1,5 +1,5 @@
 # ModPresets
-Allows you to create mod configuration presets for Don't Starve Together servers.
+Allows you to create mod configuration presets for Don't Starve Together server and client mods.
 
 ## Klei's Preset System
 `ServerCreationScreen` creates `WorldSettingsTab` creates `WorldSettingsMenu` creates `PresetBox`
@@ -37,10 +37,9 @@ Allows you to create mod configuration presets for Don't Starve Together servers
 
 ## Roadmap
 
-1. Add another `PresetBox` to the Mods screen from the MAIN MENU so you can create presets for client mods too.
-2. We'd eventually like to add an easier way to import and export mod presets, that way two friends can easily share their mod setup.
-3. What happens if someone gives you a mod preset that references mods you don't have? (Use Klei's *TheSim:StartDownloadTempMods* or *TheSim:SubscribeToMod(mod.mod_name)* or GLOBAL.DownloadMods? All found in networking.lua)
-4. Potentially make this mod compatible with our In-Game Mod Manager that allows you to change client mods while you're in-game.
+1. We'd eventually like to add an easier way to import and export mod presets, that way two friends can easily share their mod setup.
+2. What happens if someone gives you a mod preset that references mods you don't have? (Use Klei's *TheSim:StartDownloadTempMods* or *TheSim:SubscribeToMod(mod.mod_name)* or GLOBAL.DownloadMods? All found in networking.lua)
+3. Potentially make this mod compatible with our In-Game Mod Manager that allows you to change client mods while you're in-game.
 
 ---
 
@@ -79,7 +78,7 @@ To start, since Klei already provided a lot of functionality for us (such as the
 
 Before I start making a detailed outline of the code, I'll describe how we SAVE the presets first so the mod's structure will make sense.
 
-We started by trying to figure out how to retrieve a list of enabled mods and their respective configuration options for a specific save slot. We learned that `KnownModIndex` contains many functions that allow us to not only get information about enabled mods and configs, but also to set them. We figured out how to get a list of enabled mods (with `ModManager:GetEnabledServerModNames()`) and their config choices (with `KnownModIndex:LoadModConfigurationOptions(modname, is_client_mod)`).
+We started by trying to figure out how to retrieve a list of enabled mods and their respective configuration options for a specific save slot. We learned that `KnownModIndex` contains many functions that allow us to not only get information about enabled mods and configs, but also to set them. We figured out how to get a list of enabled mods (with `ModManager:GetEnabledServerModNames()`) and their config choices (with `KnownModIndex:LoadModConfigurationOptions(modname, is_client_mod)`). These loaded configuration options must be deep copied since the config object returned can still be altered elsewhere.
 
 Once we learned how to collect the mod information, we figured we could use Klei's *SavePersistentString* function to store the data to a file somewhere on the disk. By default, *SavePersistentString* saves files in here: `C:\Users\...\Documents\Klei\DoNotStarveTogether\254404980\client_save`
 
